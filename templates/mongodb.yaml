@@ -1,0 +1,119 @@
+{{- if .Values.mongodb.enabled }}
+---
+# MongoDB Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 999
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c', 'chown -R 999:999 /data/db']
+        volumeMounts:
+        - name: mongodb-storage
+          mountPath: /data/db
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: mongodb
+        image: {{ .Values.mongodb.image }}
+        ports:
+        - containerPort: 27017
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 999
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: core-infra-secrets
+              key: mongo-username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: core-infra-secrets
+              key: mongo-password
+        - name: MONGO_INITDB_DATABASE
+          value: {{ .Values.mongodb.env.MONGO_INITDB_DATABASE | quote }}
+        volumeMounts:
+        - name: mongodb-storage
+          mountPath: /data/db
+        resources:
+          {{- toYaml .Values.mongodb.resources | nindent 10 }}
+      volumes:
+      - name: mongodb-storage
+        {{- if .Values.mongodb.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: mongodb-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+
+---
+# MongoDB Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  type: {{ .Values.mongodb.service.type }}
+  ports:
+  - port: {{ .Values.mongodb.service.port }}
+    targetPort: 27017
+    protocol: TCP
+    name: mongodb
+    {{- if and (eq .Values.mongodb.service.type "NodePort") .Values.mongodb.service.nodePort }}
+    nodePort: {{ .Values.mongodb.service.nodePort }}
+    {{- end }}
+  selector:
+    app: mongodb
+
+{{- if .Values.mongodb.persistence.enabled }}
+---
+# MongoDB PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  accessModes:
+    - {{ .Values.mongodb.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.mongodb.persistence.size }}
+  {{- if .Values.mongodb.persistence.storageClass }}
+  storageClassName: {{ .Values.mongodb.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,65 @@
+{{- if .Values.exporters.redis.enabled }}
+---
+# Redis Exporter Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+    spec:
+      containers:
+      - name: redis-exporter
+        image: {{ .Values.exporters.redis.image }}
+        ports:
+        - containerPort: 9121
+          name: metrics
+        args:
+          - --redis.addr={{ .Values.exporters.redis.env.REDIS_ADDR }}
+          - --redis.password={{ .Values.exporters.redis.env.REDIS_PASSWORD }}
+        resources:
+          {{- toYaml .Values.exporters.redis.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9121
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9121
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+
+---
+# Redis Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+spec:
+  type: {{ .Values.exporters.redis.service.type }}
+  ports:
+  - port: {{ .Values.exporters.redis.service.port }}
+    targetPort: 9121
+    protocol: TCP
+    name: metrics
+  selector:
+    app: redis-exporter
+{{- end }}

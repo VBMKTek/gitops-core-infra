@@ -1,0 +1,274 @@
+# Core Infrastructure Configuration
+# Namespace: core-infra
+# Purpose: Database and storage components for VBMKTek platform
+
+global:
+  namespace: core-infra
+  environment: production
+  imageRegistry: ""
+  imagePullSecrets: []
+  
+  # Common labels for all core infrastructure
+  labels:
+    app.kubernetes.io/name: core-infra
+    app.kubernetes.io/instance: core-infra
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: vbmktek-platform
+    app.kubernetes.io/managed-by: helm
+
+  # Storage classes and persistence
+  storage:
+    storageClass: "ssd"
+    accessMode: ReadWriteOnce
+
+# PostgreSQL Database
+postgres:
+  enabled: true
+  image: "postgres:16-alpine"
+  
+  service:
+    type: NodePort
+    port: 5432
+    nodePort: 30532
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: "ssd"
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  
+  config:
+    database: postgres
+    username: postgres
+  
+  # Environment variables for postgres container
+  env:
+    POSTGRES_DB: "postgres"
+    POSTGRES_USER: "postgres"
+    POSTGRES_PASSWORD: "changeme"
+    POSTGRES_INITDB_ARGS: "--data-checksums"
+  
+  # Auto-cleanup configuration
+  cleanup:
+    enabled: false
+    schedule: "0 2 * * 0"  # Weekly on Sunday 2 AM
+    retentionDays: 30
+  
+  initSchema:
+    enabled: true
+
+# MongoDB Database
+mongodb:
+  enabled: true
+  image: "mongo:6-jammy"
+  
+  service:
+    type: NodePort
+    port: 27017
+    nodePort: 30117
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: "ssd"
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  
+  config:
+    database: admin
+  
+  # Environment variables for mongodb container
+  env:
+    MONGO_INITDB_ROOT_USERNAME: "root"
+    MONGO_INITDB_ROOT_PASSWORD: "changeme"
+    MONGO_INITDB_DATABASE: "admin"
+  
+  # Auto-cleanup configuration
+  cleanup:
+    enabled: false
+    schedule: "0 2 * * 0"
+    retentionDays: 30
+
+# Redis Cache (future-ready)
+redis:
+  enabled: true
+  image: "redis:7-alpine"
+  
+  service:
+    type: NodePort
+    port: 6379
+    nodePort: 30379
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+  
+  config:
+    password: "changeme"
+    databases: 16
+
+# Apache Kafka (future-ready)
+kafka:
+  enabled: false
+  image: "confluentinc/cp-kafka:latest"
+  
+  service:
+    type: NodePort
+    port: 9092
+    nodePort: 30092
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  config:
+    clusterId: "vbmktek-kafka"
+    replicas: 1
+
+# Zookeeper for Kafka (future-ready)
+zookeeper:
+  enabled: false
+  image: "confluentinc/cp-zookeeper:latest"
+  
+  service:
+    type: ClusterIP
+    port: 2181
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Secret Management for Core Infrastructure
+secrets:
+  enabled: true
+  
+  # Database credentials
+  database:
+    postgresPassword: "changeme"
+    postgresUsername: "postgres"
+    mongoPassword: "changeme"
+    mongoUsername: "root"
+    redisPassword: "changeme"
+  
+  # Connection strings
+  connections:
+    postgresUri: "postgresql://postgres:changeme@postgres:5432/postgres"
+    mongoUri: "mongodb://root:changeme@mongodb:27017/admin?authSource=admin&retryWrites=true"
+    redisUri: "redis://:changeme@redis:6379/0"
+
+# Simple Data Migration Configuration
+dataMigration:
+  enabled: false  # Set to true when you want to migrate data
+  sourceNamespace: kgnn
+  
+  # Note: Use scripts/simple-migrate.sh or make migrate-data for actual migration
+  # This is just for documentation purposes
+
+# Metrics Exporters Configuration
+exporters:
+  # MongoDB Exporter
+  mongodb:
+    enabled: true
+    image: "percona/mongodb_exporter:0.40"
+    
+    service:
+      type: ClusterIP
+      port: 9216
+    
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    
+    env:
+      MONGODB_URI: "mongodb://root:changeme@mongodb:27017/admin?authSource=admin"
+
+  # PostgreSQL Exporter
+  postgres:
+    enabled: true
+    image: "prometheuscommunity/postgres-exporter:v0.15.0"
+    
+    service:
+      type: ClusterIP
+      port: 9187
+    
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    
+    env:
+      DATA_SOURCE_NAME: "postgresql://postgres:changeme@postgres:5432/postgres?sslmode=disable"
+
+  # Redis Exporter
+  redis:
+    enabled: true
+    image: "oliver006/redis_exporter:v1.57.0"
+    
+    service:
+      type: ClusterIP
+      port: 9121
+    
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "64Mi"
+        cpu: "50m"
+    
+    env:
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: "changeme"

@@ -1,0 +1,65 @@
+{{- if .Values.exporters.postgres.enabled }}
+---
+# PostgreSQL Exporter Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app: postgres-exporter
+    spec:
+      containers:
+      - name: postgres-exporter
+        image: {{ .Values.exporters.postgres.image }}
+        ports:
+        - containerPort: 9187
+          name: metrics
+        env:
+        - name: DATA_SOURCE_NAME
+          value: {{ .Values.exporters.postgres.env.DATA_SOURCE_NAME | quote }}
+        resources:
+          {{- toYaml .Values.exporters.postgres.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9187
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9187
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+
+---
+# PostgreSQL Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+spec:
+  type: {{ .Values.exporters.postgres.service.type }}
+  ports:
+  - port: {{ .Values.exporters.postgres.service.port }}
+    targetPort: 9187
+    protocol: TCP
+    name: metrics
+  selector:
+    app: postgres-exporter
+{{- end }}

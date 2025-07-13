@@ -1,0 +1,91 @@
+{{- if .Values.redis.enabled }}
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: {{ .Values.redis.image }}
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - --requirepass
+        - {{ .Values.redis.config.password }}
+        - --databases
+        - {{ .Values.redis.config.databases | quote }}
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+        resources:
+          {{- toYaml .Values.redis.resources | nindent 10 }}
+      volumes:
+      - name: redis-storage
+        {{- if .Values.redis.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: redis-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: {{ .Values.redis.service.type }}
+  ports:
+  - port: {{ .Values.redis.service.port }}
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+    {{- if and (eq .Values.redis.service.type "NodePort") .Values.redis.service.nodePort }}
+    nodePort: {{ .Values.redis.service.nodePort }}
+    {{- end }}
+  selector:
+    app: redis
+
+{{- if .Values.redis.persistence.enabled }}
+---
+# Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  accessModes:
+    - {{ .Values.redis.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size }}
+  {{- if .Values.redis.persistence.storageClass }}
+  storageClassName: {{ .Values.redis.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

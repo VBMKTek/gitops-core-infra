@@ -1,0 +1,65 @@
+{{- if .Values.exporters.mongodb.enabled }}
+---
+# MongoDB Exporter Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+  template:
+    metadata:
+      labels:
+        app: mongodb-exporter
+    spec:
+      containers:
+      - name: mongodb-exporter
+        image: {{ .Values.exporters.mongodb.image }}
+        ports:
+        - containerPort: 9216
+          name: metrics
+        args:
+          - --mongodb.uri={{ .Values.exporters.mongodb.env.MONGODB_URI }}
+          - --collect-all
+        resources:
+          {{- toYaml .Values.exporters.mongodb.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9216
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9216
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+
+---
+# MongoDB Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-exporter
+  namespace: {{ .Values.global.namespace | default "core-infra" }}
+  labels:
+    {{- include "core-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb-exporter
+spec:
+  type: {{ .Values.exporters.mongodb.service.type }}
+  ports:
+  - port: {{ .Values.exporters.mongodb.service.port }}
+    targetPort: 9216
+    protocol: TCP
+    name: metrics
+  selector:
+    app: mongodb-exporter
+{{- end }}
